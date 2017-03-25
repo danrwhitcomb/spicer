@@ -4,6 +4,7 @@ Simple text generation neural network
 import os, sys
 import csv
 import logging
+import argparse
 
 import numpy as np
 
@@ -13,30 +14,60 @@ from keras.layers.recurrent import LSTM
 from keras.layers.core import Dense, Dropout, Activation
 from sklearn.preprocessing import LabelBinarizer
 
-ARG_SIZE = 2
 INT_TO_CHAR_CSV = 'int-to-char.csv'
 CHAR_TO_INT_CSV = 'char-to-int.csv'
+MODEL_NAME = 'text-generation.model'
 
 TIME_LENGTH = 75
 STEP_LENGTH = 5
 DROPOUT = 0.5
-BATCH_SIZE = 50
-EPOCHS = 50
+BATCH_SIZE = 32
+EPOCHS = 100
 
 logger = None
 
 '''
-Logging
+General Utilities
 '''
-def setup_logging():
+def setup_logging(log_file):
     logger = logging.getLogger()
-    ch = logging.StreamHandler(sys.stdout)
+    ch = None
+    if log_file is not None:
+        ch = logging.FileHandler(log_file)
+    else:
+        ch = logging.StreamHandler(sys.stdout)
+
     ch.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     ch.setFormatter(formatter)
     logger.addHandler(ch)
     logger.setLevel(logging.DEBUG)
     return logger
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Train a text generation model')
+
+    #Management arguments
+    parser.add_argument('data_dir', type=str, help='Directory which holds training data')
+    parser.add_argument('--model-name', required=False, type=str, dest='model_name',
+                        default=MODEL_NAME, help='Output location for the trained model (Default: "%s")' % MODEL_NAME)
+    parser.add_argument('--itoa-map', required=False, type=str, dest='itoa_map',
+                        default=INT_TO_CHAR_CSV, help='Path to save int to char mappings (Default: "%s")' % INT_TO_CHAR_CSV)
+    parser.add_argument('--atoi-map', required=False, type=str, dest='atoi_map',
+                        default=CHAR_TO_INT_CSV, help='Path to save char to int mappings (Default: "%s")' % CHAR_TO_INT_CSV)
+    parser.add_argument('--log-file', required=False, type=str, dest='log_file',
+                        help='File path to log to. Logs to STDOUT if unspecified.')
+
+    #Network parameters
+    parser.add_argument('--batch-size', type=int, dest='batch_size', required=False,
+                        default=BATCH_SIZE, help='Batch size to train on (Default: %d)' % BATCH_SIZE)
+    parser.add_argument('--epochs', type=int, dest='epochs', required=False,
+                        default=EPOCHS, help='Number of training epochs (Default: %d)' % EPOCHS)
+    parser.add_argument('--dropout', type=int, dest='dropout', required=False,
+                        default=DROPOUT, help='Dropout percentage range between (0, 1). (Default: %.2f)' % DROPOUT)
+
+    return parser.parse_args()
+
 
 '''
 Data Management
@@ -146,23 +177,21 @@ MAIN
 '''
 def main():
     global logger
-    logger = setup_logging()
-    if len(sys.argv) < ARG_SIZE + 1:
-        print("Too few arguments provided")
-        exit(1)
+
+    args = parse_arguments()
+    logger = setup_logging(args.log_file)
 
     #Get opts and load data
     logger.info('Loading raw text')
-    data_dir = sys.argv[1]
-    output_dir = sys.argv[2]
+    data_dir = args.data_dir
     raw_text = load_text(data_dir)
 
     #Save the character mappings to be used
     # for character regeneration
     logger.info('Saving character maps')
     char_to_int, int_to_char = get_char_mappings(raw_text)
-    save_char_mapping(os.path.join(output_dir, INT_TO_CHAR_CSV), int_to_char)
-    save_char_mapping(os.path.join(output_dir, CHAR_TO_INT_CSV), char_to_int)
+    save_char_mapping(args.itoa_map, int_to_char)
+    save_char_mapping(args.atoi_map, char_to_int)
 
     #Create examples from rax data
     logger.info('Creating examples')
@@ -181,10 +210,13 @@ def main():
 
     #Get the model and fit
     logger.info('Building model')
-    model = get_new_network(input_shape=(None, one_hot_examples.shape[2]), dropout=DROPOUT)
+    model = get_new_network(input_shape=(None, one_hot_examples.shape[2]), dropout=args.dropout)
 
     logger.info('Fitting model')
-    model.fit(one_hot_examples, one_hot_labels, batch_size=BATCH_SIZE, epochs=EPOCHS)
+    model.fit(one_hot_examples, one_hot_labels, batch_size=args.batch_size, epochs=args.epochs)
+
+    logger.info('Saving model to %s' % args.model_name)
+    model.save(args.model_name)
 
 if __name__ == '__main__':
     main()

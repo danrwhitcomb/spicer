@@ -24,13 +24,10 @@ To choose, make a file at `~/.keras/keras.json` and make it look something like 
 ```
 
 ## How to run
-You can start training the model with `net.py`. You will need to provide the data directory you want to load, as well as the directory you want for the character-integer mappings.
+You can start training the model with `net.py`. All that is required to begin training is the directory path which contains the data you want to load.
 
 ```
-$ python net.py [data directory] [mappings output directory]
+$ python net.py [data directory]
 ```
 
-For example:
-```
-$ python net.py ~/danrwhitcomb/spicer/data ~/danrwhitcomb/spicer
-```
+You can specify output file paths as well customize network parameters by using additional flags. Do `python net.py --help` for more information.

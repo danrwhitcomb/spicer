@@ -4,3 +4,4 @@ include/
 .DS_Store
 .Python
 *.csv
+*.log
