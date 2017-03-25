@@ -23,7 +23,7 @@ To choose, make a file at `~/.keras/keras.json` and make it look something like 
 }
 ```
 
-##How to run
+## How to run
 You can start training the model with `net.py`. You will need to provide the data directory you want to load, as well as the directory you want for the character-integer mappings.
 
 ```
