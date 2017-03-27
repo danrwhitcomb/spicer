@@ -49,8 +49,7 @@ def parse_arguments():
 '''
 Data
 '''
-#Load mappings from a CSV file with format:
-# x,y
+#Load mappings from a single row CSV file
 def load_list(path):
     if not os.path.isfile(path):
         log.error('Unable to find file at %s' % path)
@@ -72,6 +71,8 @@ def build_seed_input(seed, input_shape, binarizer):
 
     return seed_input
 
+# Writes data to a file. If path is None,
+# write to STDOUT
 def write_result(path, result):
     if path:
         with open(path, 'w') as f:
@@ -104,7 +105,6 @@ def translate_model_output(output):
 #Given a mode, a starting input, a desired length
 # and a LabelBinarizer, generate text
 def generate_text(model, start, length, binarizer):
-
     current = start
     result = []
 
@@ -112,7 +112,7 @@ def generate_text(model, start, length, binarizer):
     for i in range(length * 4):
         output = model.predict(np.reshape(current, (1, current.shape[0], current.shape[1])))
 
-        #Slide the input back one index, and append
+        #Slide the input back one index, and appends
         # the latest output to the end
         output_one_hot = translate_model_output(output[0])
         current[:-1] = current[1:]
@@ -134,12 +134,10 @@ def clean_text(raw_text, length, trim):
 
     #If 'trim' is on, get rid pf everything after the last period
     if trim:
-        split_text = result.split('.')
+        split_text = result.split(TRIM_CHAR)
         result = ''.join(split_text[:-1]) if len(split_text) > 1 else result
 
     return result
-
-
 
 '''
 Main
