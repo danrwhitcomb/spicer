@@ -3,7 +3,6 @@ Simple text generation neural network
 '''
 import os, sys
 import csv
-import logging
 import argparse
 
 import numpy as np
@@ -12,10 +11,13 @@ from keras.models import Sequential
 from keras.optimizers import Adam
 from keras.layers.recurrent import LSTM
 from keras.layers.core import Dense, Dropout, Activation
-from sklearn.preprocessing import LabelBinarizer
+from keras.layers.wrappers import TimeDistributed
+from keras.callbacks import BaseLogger, EarlyStopping
 
-INT_TO_CHAR_CSV = 'int-to-char.csv'
-CHAR_TO_INT_CSV = 'char-to-int.csv'
+
+from util import setup_logging, get_binarizer
+
+CHAR_CSV = 'chars.csv'
 MODEL_NAME = 'text-generation.model'
 
 TIME_LENGTH = 75
@@ -27,23 +29,8 @@ EPOCHS = 100
 logger = None
 
 '''
-General Utilities
+Argument parsing
 '''
-def setup_logging(log_file):
-    logger = logging.getLogger()
-    ch = None
-    if log_file is not None:
-        ch = logging.FileHandler(log_file)
-    else:
-        ch = logging.StreamHandler(sys.stdout)
-
-    ch.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    ch.setFormatter(formatter)
-    logger.addHandler(ch)
-    logger.setLevel(logging.DEBUG)
-    return logger
-
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Train a text generation model')
 
@@ -51,10 +38,8 @@ def parse_arguments():
     parser.add_argument('data_dir', type=str, help='Directory which holds training data')
     parser.add_argument('--model-name', required=False, type=str, dest='model_name',
                         default=MODEL_NAME, help='Output location for the trained model (Default: "%s")' % MODEL_NAME)
-    parser.add_argument('--itoa-map', required=False, type=str, dest='itoa_map',
-                        default=INT_TO_CHAR_CSV, help='Path to save int to char mappings (Default: "%s")' % INT_TO_CHAR_CSV)
-    parser.add_argument('--atoi-map', required=False, type=str, dest='atoi_map',
-                        default=CHAR_TO_INT_CSV, help='Path to save char to int mappings (Default: "%s")' % CHAR_TO_INT_CSV)
+    parser.add_argument('--character-map', required=False, type=str, dest='character_map',
+                        default=CHAR_CSV, help='Path to save int to char mappings (Default: "%s")' % CHAR_CSV)
     parser.add_argument('--log-file', required=False, type=str, dest='log_file',
                         help='File path to log to. Logs to STDOUT if unspecified.')
 
@@ -88,49 +73,22 @@ def load_text(data_dir):
 
     return raw_text
 
-#Writes a dictionary to a file
-def save_char_mapping(path, d):
+#Writes list to a file separated by commas
+def save_list(path, lst):
     with open(path, 'w') as f:
-        w = csv.writer(f)
-        w.writerows(d.items())
+        writer = csv.writer(f)
+        writer.writerow(lst)
 
-#Gets the unique characters in a string
-# and maps them to integers.
-def get_char_mappings(raw_text):
-    characters = sorted(list(set(raw_text)))
-    return ({c:i for i, c in enumerate(characters)},
-           {i:c for i, c in enumerate(characters)})
+#Gets all of the unique characters in a string
+def get_chars(raw_text):
+    return sorted(list(set(raw_text)))
 
-#Gets a fitted LabelBinarizer
-def get_binarizer(ints):
-    binarizer = LabelBinarizer()
-    binarizer.fit(ints)
-    return binarizer
-
-#Coverts a vector to another vector
-# given the mappings
-def translate_vector(vector, mappings):
-    translate_vect = np.zeros(len(vector))
-    for i, val in enumerate(vector):
-        translate_vect[i] = mappings[val]
-
-    return translate_vect
-
-#Converts all vectors in a list based on
-# the given mappings
-def translate_batch(batch, mappings):
-    translated_batch = []
-    for item in batch:
-        translated_batch.append(translate_vector(item, mappings))
-
-    return np.array(translated_batch)
-
-#Translates a batch of items to
-# one-hot vectors given a LabelBinarizer
+#Translates a batch of string to
+# one-hot vectors by character given a LabelBinarizer
 def convert_to_one_hot_batch(batch, binarizer):
     one_hot_batch = []
     for item in batch:
-        one_hot_batch.append(binarizer.transform(item))
+        one_hot_batch.append(binarizer.transform(list(item)))
 
     return np.array(one_hot_batch)
 
@@ -143,7 +101,7 @@ def create_examples(raw_text):
         start = i
         end = i + TIME_LENGTH
         examples.append(raw_text[start:end])
-        labels.append(raw_text[end])
+        labels.append(raw_text[start + 1: end + 1])
 
     return examples, labels
 
@@ -153,10 +111,10 @@ Network setup
 def get_new_network(input_shape, dropout):
     logger.info('Creating model with input shape: %s' % str(input_shape))
     model = Sequential()
-    model.add(LSTM(TIME_LENGTH, activation='tanh', input_shape=input_shape,
+    model.add(LSTM(100, activation='tanh', input_shape=input_shape,
         dropout=dropout, return_sequences=True))
-    model.add(LSTM(TIME_LENGTH * 2, dropout=dropout))
-    model.add(Dense(input_shape[1]))
+    model.add(LSTM(200, dropout=dropout, return_sequences=True))
+    model.add(TimeDistributed(Dense(input_shape[1])))
     model.add(Activation('softmax'))
 
     optimizer = get_optimizer()
@@ -188,29 +146,24 @@ def main():
 
     #Save the character mappings to be used
     # for character regeneration
-    logger.info('Saving character maps')
-    char_to_int, int_to_char = get_char_mappings(raw_text)
-    save_char_mapping(args.itoa_map, int_to_char)
-    save_char_mapping(args.atoi_map, char_to_int)
+    logger.info('Saving character map')
+    characters = get_chars(raw_text)
+    save_list(args.character_map, characters)
 
     #Create examples from rax data
     logger.info('Creating examples')
     char_examples, char_labels = create_examples(raw_text)
 
-    #Convert characters to ints
-    logger.info('Converting to integer representations')
-    int_examples = translate_batch(char_examples, char_to_int)
-    int_labels = translate_vector(char_labels, char_to_int)
-
-    #Convert int vectors to one-hot labels
+    #Convert char vectors to matrices where each row
+    # is a one-hot vector
     logger.info('Converting to one-hot representations')
-    binarizer = get_binarizer(int_to_char.keys())
-    one_hot_examples = convert_to_one_hot_batch(int_examples, binarizer)
-    one_hot_labels = binarizer.transform(int_labels)
+    binarizer = get_binarizer(characters)
+    one_hot_examples = convert_to_one_hot_batch(char_examples, binarizer)
+    one_hot_labels = convert_to_one_hot_batch(char_labels, binarizer)
 
     #Get the model and fit
     logger.info('Building model')
-    model = get_new_network(input_shape=(None, one_hot_examples.shape[2]), dropout=args.dropout)
+    model = get_new_network(input_shape=(one_hot_examples.shape[1], one_hot_examples.shape[2]), dropout=args.dropout)
 
     logger.info('Fitting model')
     model.fit(one_hot_examples, one_hot_labels, batch_size=args.batch_size, epochs=args.epochs)

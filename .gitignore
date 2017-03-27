@@ -3,5 +3,8 @@ lib/
 include/
 .DS_Store
 .Python
+pip-selfcheck.json
 *.csv
 *.log
+*.model
+*.pyc
