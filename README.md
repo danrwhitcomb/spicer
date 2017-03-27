@@ -10,7 +10,7 @@ Though the network is generally data agnostic, this specific data checked into t
 See `requirements.txt` for dependency information. Everything should be accessible via pip. There are no further requirements to train the model.
 
 ### Theano vs Tensorflow
-The current requirements include both Tensorflow and Theano as requirements, but either can be used and you can configure Keras for your choice. I usually choose Theano because the GPU I run models on is too old for tensorflow.
+The current requirements include both Tensorflow and Theano as requirements, but either can be used and you can configure Keras for your choice. I usually choose Theano because the GPU I run models on is too old for Tensorflow.
 
 To choose, make a file at `~/.keras/keras.json` and make it look something like below. Switch out `theano` for `tensorflow` if you want Keras to load Tensorflow instead.
 
@@ -44,4 +44,4 @@ In order to generate new text with the products of `net.py`, you will need to ru
 $ python generate.py [model path] --char-file [char csv]
 ```
 
-Additional options are availabe via `python generate.py --help`.
+Text will be sent to STDOUT by default. You can use the `--output-path` flag to write it to a specific file. Additional options are available via `python generate.py --help`.
