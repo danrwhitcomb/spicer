@@ -33,13 +33,13 @@ def parse_arguments():
                         help='File to output generated text to. If unspecified, text is printed to STDOUT')
 
     #Output related
-    parser.add_argument('--seed', required=False, type=str, dest='seed',
+    parser.add_argument('-s', '--seed', required=False, type=str, dest='seed',
                         default=random.choice(string.letters),
                         help='A seed string to start generation with. If unspecified, a random character will be chosen')
     parser.add_argument('-l', '--length', required=False, type=int, dest='length',
                         default=OUTPUT_LENGTH,
                         help='Desired output length. Default: %d' % OUTPUT_LENGTH)
-    parser.add_argument('--trim', required=False, type=bool, dest='trim',
+    parser.add_argument('-t', '--trim', required=False, type=bool, dest='trim',
                         default=False,
                         help='If provided, output is trimmed to the last generated period')
 
@@ -108,8 +108,8 @@ def generate_text(model, start, length, binarizer):
     current = start
     result = []
 
-    #Right now, just produce `length` characters
-    for i in range(length):
+    #Right now, just produce a lot of characters
+    for i in range(length * 4):
         output = model.predict(np.reshape(current, (1, current.shape[0], current.shape[1])))
 
         #Slide the input back one index, and append
