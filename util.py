@@ -3,6 +3,8 @@ import logging
 import numpy as np
 from sklearn.preprocessing import LabelBinarizer
 
+NO_OP_CHAR = '\xe2'
+
 def setup_logging(log_file):
     logger = logging.getLogger()
     ch = None

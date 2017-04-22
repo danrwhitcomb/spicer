@@ -8,7 +8,7 @@ import numpy as np
 import keras
 import keras.backend as K
 
-from util import setup_logging, get_binarizer
+from util import setup_logging, get_binarizer, NO_OP_CHAR
 
 OUTPUT_LENGTH = 144
 TRIM_CHAR = '.'
@@ -64,12 +64,9 @@ def load_list(path):
 # If string is not as long a input shape, remaining
 # rows are zero
 def build_seed_input(seed, input_shape, binarizer):
-    seed_one_hot = binarizer.transform(list(seed))
-    seed_input = np.zeros(shape=input_shape)
-
-    seed_input[-len(seed_one_hot):] = seed_one_hot
-
-    return seed_input
+    seed_padded = list(NO_OP_CHAR * input_shape[0])
+    seed_padded[-len(seed):] = list(seed)
+    return binarizer.transform(seed_padded)
 
 # Writes data to a file. If path is None,
 # write to STDOUT
@@ -109,7 +106,7 @@ def generate_text(model, start, length, binarizer):
     result = []
 
     #Right now, just produce a lot of characters
-    for i in range(length * 4):
+    for i in range(length):
         output = model.predict(np.reshape(current, (1, current.shape[0], current.shape[1])))
 
         #Slide the input back one index, and appends
@@ -178,7 +175,7 @@ def main():
                                 binarizer)
 
     cleaned_text = clean_text(raw_text, args.length, args.trim)
-    write_output(clean_text)
+    write_result(args.output_path, seed + cleaned_text)
 
 if __name__ == '__main__':
     main()

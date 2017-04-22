@@ -15,7 +15,7 @@ from keras.layers.wrappers import TimeDistributed
 from keras.callbacks import BaseLogger, EarlyStopping
 
 
-from util import setup_logging, get_binarizer
+from util import setup_logging, get_binarizer, NO_OP_CHAR
 
 CHAR_CSV = 'chars.csv'
 MODEL_NAME = 'text-generation.model'
@@ -57,21 +57,15 @@ def parse_arguments():
 '''
 Data Management
 '''
-# Loads raw text from all the files
-# in a directory
-def load_text(data_dir):
-    if not os.path.isdir(data_dir):
-        print("%s is not a directory" % data_dir)
+
+# Loads raw text from a file
+def load_text(path):
+    if not os.path.isfile(path):
+        print("%s is not a file" % path)
         exit(1)
 
-    data = os.listdir(data_dir)
-    raw_text = ''
-    for filename in data:
-        path = os.path.join(data_dir, filename)
-        with open(path, 'r') as f:
-            raw_text += f.read()
-
-    return raw_text
+    with open(path, 'r') as f:
+        return f.read()
 
 #Writes list to a file separated by commas
 def save_list(path, lst):
@@ -79,18 +73,26 @@ def save_list(path, lst):
         writer = csv.writer(f)
         writer.writerow(lst)
 
-#Gets all of the unique characters in a string
-def get_chars(raw_text):
+#Gets all of the unique characters from the
+#data in a directory
+def get_chars(data_dir):
+    raw_text = ''
+    for filename in os.listdir(data_dir):
+        raw_text += load_text(os.path.join(data_dir, filename))
+
     return sorted(list(set(raw_text)))
 
 #Translates a batch of string to
 # one-hot vectors by character given a LabelBinarizer
-def convert_to_one_hot_batch(batch, binarizer):
-    one_hot_batch = []
-    for item in batch:
-        one_hot_batch.append(binarizer.transform(list(item)))
+def convert_to_one_hot_batch(batch, binarizer, class_num):
+    if len(batch) == 0:
+        return None
 
-    return np.array(one_hot_batch)
+    one_hot_batch = np.zeros(shape=(len(batch), len(batch[0]), class_num))
+    for i, item in enumerate(batch):
+        one_hot_batch[i] = binarizer.transform(list(item))
+
+    return one_hot_batch
 
 # Parse raw_text into example
 # and label lists
@@ -100,8 +102,30 @@ def create_examples(raw_text):
     for i in range(0, len(raw_text) - TIME_LENGTH + 1, STEP_LENGTH):
         start = i
         end = i + TIME_LENGTH
-        examples.append(raw_text[start:end])
-        labels.append(raw_text[start + 1: end + 1])
+
+        example = raw_text[start:end]
+        label = raw_text[start + 1: end + 1]
+
+        if len(example) != TIME_LENGTH or len(label) != TIME_LENGTH:
+            continue
+
+        examples.append(example)
+        labels.append(label)
+
+    return examples, labels
+
+def generate_data(data_dir):
+    if not os.path.isdir(data_dir):
+        log.error('Unable to find directory %s' % data_dir)
+        exit(1)
+
+    examples = []
+    labels = []
+    for filename in os.listdir(data_dir):
+        text = load_text(os.path.join(data_dir, filename))
+        new_examples, new_labels = create_examples(text)
+        examples += new_examples
+        labels += new_labels
 
     return examples, labels
 
@@ -111,9 +135,9 @@ Network setup
 def get_new_network(input_shape, dropout):
     logger.info('Creating model with input shape: %s' % str(input_shape))
     model = Sequential()
-    model.add(LSTM(100, activation='tanh', input_shape=input_shape,
+    model.add(LSTM(100, input_shape=input_shape, activation='tanh',
         dropout=dropout, return_sequences=True))
-    model.add(LSTM(200, dropout=dropout, return_sequences=True))
+    model.add(LSTM(200, activation='tanh', dropout=dropout, return_sequences=True))
     model.add(TimeDistributed(Dense(input_shape[1])))
     model.add(Activation('softmax'))
 
@@ -138,28 +162,25 @@ def main():
 
     args = parse_arguments()
     logger = setup_logging(args.log_file)
-
-    #Get opts and load data
-    logger.info('Loading raw text')
     data_dir = args.data_dir
-    raw_text = load_text(data_dir)
 
     #Save the character mappings to be used
     # for character regeneration
     logger.info('Saving character map')
-    characters = get_chars(raw_text)
+    characters = get_chars(data_dir)
     save_list(args.character_map, characters)
 
     #Create examples from rax data
     logger.info('Creating examples')
-    char_examples, char_labels = create_examples(raw_text)
+    char_examples, char_labels = generate_data(data_dir)
 
     #Convert char vectors to matrices where each row
     # is a one-hot vector
     logger.info('Converting to one-hot representations')
     binarizer = get_binarizer(characters)
-    one_hot_examples = convert_to_one_hot_batch(char_examples, binarizer)
-    one_hot_labels = convert_to_one_hot_batch(char_labels, binarizer)
+    class_number = len(characters)
+    one_hot_examples = convert_to_one_hot_batch(char_examples, binarizer, class_number)
+    one_hot_labels = convert_to_one_hot_batch(char_labels, binarizer, class_number)
 
     #Get the model and fit
     logger.info('Building model')
