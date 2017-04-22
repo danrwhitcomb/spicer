@@ -43,6 +43,12 @@ def parse_arguments():
     parser.add_argument('--log-file', required=False, type=str, dest='log_file',
                         help='File path to log to. Logs to STDOUT if unspecified.')
 
+    #Data parameters
+    parser.add_argument('--time-length', type=int, help='The number of characters to be in a single sample',
+                        default=TIME_LENGTH, required=False, dest='time_length')
+    parser.add_argument('--step-size', type=int, required=False, dest='step_size', default=STEP_LENGTH
+                        help='The number of characters to step forward when generating a new example')
+
     #Network parameters
     parser.add_argument('--batch-size', type=int, dest='batch_size', required=False,
                         default=BATCH_SIZE, help='Batch size to train on (Default: %d)' % BATCH_SIZE)
@@ -96,17 +102,17 @@ def convert_to_one_hot_batch(batch, binarizer, class_num):
 
 # Parse raw_text into example
 # and label lists
-def create_examples(raw_text):
+def create_examples(raw_text, time_length, step_size):
     examples = []
     labels = []
-    for i in range(0, len(raw_text) - TIME_LENGTH + 1, STEP_LENGTH):
+    for i in range(0, len(raw_text) - time_length + 1, step_size):
         start = i
-        end = i + TIME_LENGTH
+        end = i + time_length
 
         example = raw_text[start:end]
         label = raw_text[start + 1: end + 1]
 
-        if len(example) != TIME_LENGTH or len(label) != TIME_LENGTH:
+        if len(example) != time_length or len(label) != time_length:
             continue
 
         examples.append(example)
@@ -114,7 +120,7 @@ def create_examples(raw_text):
 
     return examples, labels
 
-def generate_data(data_dir):
+def generate_data(data_dir, time_length, step_size):
     if not os.path.isdir(data_dir):
         log.error('Unable to find directory %s' % data_dir)
         exit(1)
@@ -123,7 +129,7 @@ def generate_data(data_dir):
     labels = []
     for filename in os.listdir(data_dir):
         text = load_text(os.path.join(data_dir, filename))
-        new_examples, new_labels = create_examples(text)
+        new_examples, new_labels = create_examples(text, time_length, step_size)
         examples += new_examples
         labels += new_labels
 
@@ -172,7 +178,7 @@ def main():
 
     #Create examples from rax data
     logger.info('Creating examples')
-    char_examples, char_labels = generate_data(data_dir)
+    char_examples, char_labels = generate_data(data_dir, args.time_length, args.step_size)
 
     #Convert char vectors to matrices where each row
     # is a one-hot vector
@@ -184,10 +190,12 @@ def main():
 
     #Get the model and fit
     logger.info('Building model')
-    model = get_new_network(input_shape=(one_hot_examples.shape[1], one_hot_examples.shape[2]), dropout=args.dropout)
+    model = get_new_network(input_shape=(one_hot_examples.shape[1], one_hot_examples.shape[2]),
+                            dropout=args.dropout)
 
     logger.info('Fitting model')
-    model.fit(one_hot_examples, one_hot_labels, batch_size=args.batch_size, epochs=args.epochs)
+    model.fit(one_hot_examples, one_hot_labels, batch_size=args.batch_size,
+                epochs=args.epochs)
 
     logger.info('Saving model to %s' % args.model_name)
     model.save(args.model_name)
